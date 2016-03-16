@@ -597,138 +597,108 @@ static void goodix_ts_work_func(struct work_struct *work)
 #endif
 
 #if GTP_SLIDE_WAKEUP
- //added by yewenliang for test
-    char *none_wakeup[2] = {"GESTURE=NONE",NULL};
-    char *left_wakeup[2] = {"GESTURE=LEFT",NULL};
-    char *right_wakeup[2] = {"GESTURE=RIGHT",NULL};
-    char *up_wakeup[2] = {"GESTURE=UP",NULL};
-    char *down_wakeup[2] = {"GESTURE=DOWN",NULL};
-    char *doubleClick_wakeup[2] = {"GESTURE=DOUBLE_CLICK",NULL};
-    char *c_wakeup[2] = {"GESTURE=C",NULL};
-    char *e_wakeup[2] = {"GESTURE=E",NULL};
-    char *m_wakeup[2] = {"GESTURE=M",NULL};
-    char *o_wakeup[2] = {"GESTURE=O",NULL};
-    char *w_wakeup[2] = {"GESTURE=W",NULL};
-    char **envp;
 
-    u8 doze_buf[3] = {0x81, 0x4B};
-#endif
-    GTP_DEBUG_FUNC();
+	/* Add mutex_lock for awake gesture to
+	   prevent this mode from being occupied
 
-    ts = container_of(work, struct goodix_ts_data, work);
-    if (ts->enter_update)
-    {
-        return;
-    }
-#if GTP_SLIDE_WAKEUP
-/* begin to add mutex_lock for gesture awake for avoiding this mode be occupied by liushilong@yulong.com on 2014-11-6 17:07*/
-    mutex_lock(&ts->doze_mutex);
-/* end to add mutex_lock for gesture awake for avoiding this mode be occupied by liushilong@yulong.com on 2014-11-6 17:07*/
-    if (DOZE_ENABLED == doze_status)
-    {
-        ret = gtp_i2c_read(i2c_connect_client, doze_buf, 3);
-        GTP_DEBUG("0x814B = 0x%02X", doze_buf[2]);
-        envp = none_wakeup;	//added by yewenliang for test
+	   By liushilong@yulong.com on 2014-11-6 17:07
+	*/
+	mutex_lock(&ts->doze_mutex);
 
-        if (ret > 0)
-        {
-            if ((doze_buf[2] == 0xAA) && (support_gesture & TW_SUPPORT_RIGHT_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0xAA) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"right");
-                envp = right_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0xBB) && (support_gesture & TW_SUPPORT_LEFT_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0xBB) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"left");
-                envp = left_wakeup;	//added by yewenliang for test
-            }
-            else if ((0xC0 == (doze_buf[2] & 0xC0)) && (support_gesture & TW_SUPPORT_DOUBLE_CLICK_WAKEUP))
-            {
-                GTP_INFO("double click to light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"double_click");
-                envp = doubleClick_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0xBA) && (support_gesture & TW_SUPPORT_UP_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0xBA) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"up");
-                envp = up_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0xAB) && (support_gesture & TW_SUPPORT_DOWN_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0xAB) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"down");
-                envp = down_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0x63) && (support_gesture & TW_SUPPORT_C_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0x63) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"c");
-                envp = c_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0x65) && (support_gesture & TW_SUPPORT_E_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0x65) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"e");
-                envp = e_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0x6D) && (support_gesture & TW_SUPPORT_M_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0x6D) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"m");
-                envp = m_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0x6F) && (support_gesture & TW_SUPPORT_O_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0x6F) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"o");
-                envp = o_wakeup;	//added by yewenliang for test
-            }
-            else if ((doze_buf[2] == 0x77) && (support_gesture & TW_SUPPORT_W_SLIDE_WAKEUP))
-            {
-                GTP_INFO("Slide(0x77) To Light up the screen!");
-                doze_status = DOZE_WAKEUP;
-                sprintf(wakeup_slide,"w");
-                envp = w_wakeup;	//added by yewenliang for test
-            }
-            else
-            {
-			    //added by yewenliang
-                // clear 0x814B
-                doze_buf[2] = 0x00;
-                gtp_i2c_write(i2c_connect_client, doze_buf, 3);
-                gtp_enter_doze(ts);
-            }
-        }
+	if (doze_status == DOZE_ENABLED) {
+		ret = gtp_i2c_read(i2c_connect_client, doze_buf, 3);
+		GTP_DEBUG("0x814B = 0x%02X", doze_buf[2]);
+		envp = none_wakeup;	/* For testing, added by yewenliang */
 
-        if (doze_status == DOZE_WAKEUP) {
-             input_report_key(ts->input_dev, KEY_POWER, 1);
-             input_report_key(ts->input_dev, KEY_POWER, 0);
-             input_sync(ts->input_dev);
+		if (ret > 0) {
+			if (doze_buf[2] == 0xAA &&
+				support_gesture & TW_SUPPORT_RIGHT_SLIDE_WAKEUP) {
+				doze_status = DOZE_WAKEUP;
+				GTP_INFO("Slide(0xAA) To Light up the screen!");
+				sprintf(wakeup_slide,"right");
+				envp = right_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0xBB &&
+				support_gesture & TW_SUPPORT_LEFT_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0xBB) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"left");
+				envp = left_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0xC0 &&
+				support_gesture & TW_SUPPORT_DOUBLE_CLICK_WAKEUP) {
+				GTP_INFO("double click to light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"double_click");
+				envp = doubleClick_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0xBA &&
+				support_gesture & TW_SUPPORT_UP_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0xBA) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"up");
+				envp = up_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0xAB &&
+				support_gesture & TW_SUPPORT_DOWN_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0xAB) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"down");
+				envp = down_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0x63 &&
+				support_gesture & TW_SUPPORT_C_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0x63) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"c");
+				envp = c_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0x65 &&
+				support_gesture & TW_SUPPORT_E_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0x65) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"e");
+				envp = e_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0x6D &&
+				support_gesture & TW_SUPPORT_M_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0x6D) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"m");
+				envp = m_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0x6F &&
+				support_gesture & TW_SUPPORT_O_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0x6F) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"o");
+				envp = o_wakeup;	/* For testing, added by yewenliang */
+			} else if (doze_buf[2] == 0x77 &&
+				support_gesture & TW_SUPPORT_W_SLIDE_WAKEUP) {
+				GTP_INFO("Slide(0x77) To Light up the screen!");
+				doze_status = DOZE_WAKEUP;
+				sprintf(wakeup_slide,"w");
+				envp = w_wakeup;	/* For testing, added by yewenliang */
+			} else {
+				/* Clear 0x814B, added by yewenliang */
+				doze_buf[2] = 0x00;
+				gtp_i2c_write(i2c_connect_client, doze_buf, 3);
+				gtp_enter_doze(ts);
+			}
+		}
 
-             // clear 0x814B
-             doze_buf[2] = 0x00;
-             gtp_i2c_write(i2c_connect_client, doze_buf, 3);
-             gtp_enter_doze(ts);
-        }
+		if (doze_status == DOZE_WAKEUP) {
+			 input_report_key(ts->input_dev, KEY_WAKEUP, 1);
+			 input_report_key(ts->input_dev, KEY_WAKEUP, 0);
+			 input_sync(ts->input_dev);
 
-        if (ts->use_irq)
-        {
-            gtp_irq_enable(ts);
-        }
+			 /* Clear 0x814B */
+			 doze_buf[2] = 0x00;
+			 gtp_i2c_write(i2c_connect_client, doze_buf, 3);
+			 gtp_enter_doze(ts);
+		}
 
-/* begin to add mutex_lock for gesture awake elease this mode by liushilong@yulong.com on 2014-11-6 17:07*/
+		if (ts->use_irq)
+			gtp_irq_enable(ts);
+
+		/* Add mutex_lock for awake gesture to
+		   release this mode
+
+		   By liushilong@yulong.com on 2014-11-6 17:07
+		*/
+
 		mutex_unlock(&ts->doze_mutex);
 /* end to add mutex_lock for gesture awake elease this mode by liushilong@yulong.com on 2014-11-6 17:07*/
 
@@ -1607,8 +1577,10 @@ static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
 #endif
 
 #if GTP_SLIDE_WAKEUP
-    set_bit(EV_KEY, ts->input_dev->evbit);
-    set_bit(KEY_POWER, ts->input_dev->keybit);
+
+	set_bit(EV_KEY, ts->input_dev->evbit);
+	set_bit(KEY_WAKEUP, ts->input_dev->keybit);
+
 #endif 
 #if GTP_CHANGE_X2Y
     GTP_SWAP(ts->abs_x_max, ts->abs_y_max);
