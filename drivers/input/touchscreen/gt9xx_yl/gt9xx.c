@@ -111,10 +111,8 @@ struct cover_window_info gt9xx_cover_window;
 static s8 gtp_i2c_test(struct i2c_client *client);
 void gtp_reset_guitar(struct i2c_client *client, s32 ms);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void goodix_ts_early_suspend(struct early_suspend *handler);
-static void goodix_ts_late_resume(struct early_suspend *handler);
-#endif
+
+
 #if defined(CONFIG_FB)
 static int fb_notifier_callback(struct notifier_block *self,
 				 unsigned long event, void *data);
@@ -1433,21 +1431,7 @@ static s8 gtp_i2c_test(struct i2c_client *client)
 
 
 ////////////////////////////////////////////////////////////////////////////
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void goodix_ts_early_suspend(struct early_suspend *handler)
-{
-    	struct goodix_ts_data *ts = container_of(handler, struct goodix_ts_data, early_suspend);
-    GTP_DEBUG_FUNC();
-	goodix_ts_disable(ts->input_dev);
-}
 
-static void goodix_ts_late_resume(struct early_suspend *handler)
-{
-    	struct goodix_ts_data *ts = container_of(handler, struct goodix_ts_data, early_suspend);
-    GTP_DEBUG_FUNC();
-	goodix_ts_enable(ts->input_dev);
-}
-#else
 static int goodix_ts_suspend(struct device *dev)
 {
 	struct goodix_ts_data *ts = i2c_get_clientdata(i2c_connect_client);
@@ -1489,8 +1473,6 @@ static const struct dev_pm_ops goodix_pm_ops = {
 	.suspend	= mxt_suspend,
 	.resume	= mxt_resume,
 };
-#endif
-
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -1605,12 +1587,9 @@ static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
     ts->input_dev->id.product = 0xBEEF;
     ts->input_dev->id.version = 10427;
 
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-    ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-    ts->early_suspend.suspend = goodix_ts_early_suspend;
-    ts->early_suspend.resume = goodix_ts_late_resume;
-    register_early_suspend(&ts->early_suspend);
-#elif defined(CONFIG_FB)
+
+#ifdef CONFIG_FB
+
 	ts->fb_notif.notifier_call = fb_notifier_callback;
 	ret = fb_register_client(&ts->fb_notif);
 	if (ret)
@@ -3252,10 +3231,9 @@ static int  goodix_ts_remove(struct i2c_client *client)
 {
     struct goodix_ts_data *ts = i2c_get_clientdata(client);
 
-    GTP_DEBUG_FUNC();
-#ifdef CONFIG_HAS_EARLYSUSPEND
-    unregister_early_suspend(&ts->early_suspend);
-#endif
+
+	GTP_DEBUG_FUNC();
+
 
 #if GTP_CREATE_WR_NODE
     uninit_wr_node();
@@ -3681,11 +3659,13 @@ static struct of_device_id goodix_match_table[] = {
 
 
 static struct i2c_driver goodix_ts_driver = {
-    .driver = {
-        .name     = GTP_I2C_NAME,
-        .owner    = THIS_MODULE,
-        .of_match_table = goodix_match_table,
-#if (defined(CONFIG_PM) && !defined(CONFIG_HAS_EARLYSUSPEND) && !defined(CONFIG_FB))
+
+	.driver = {
+		.name	= GTP_I2C_NAME,
+		.owner	= THIS_MODULE,
+		.of_match_table = goodix_match_table,
+#if defined(CONFIG_PM) && !defined(CONFIG_FB)
+
 	.pm   = &goodix_pm_ops,
 #endif
    },
