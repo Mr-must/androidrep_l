@@ -161,6 +161,30 @@ extern u8 gup_check_update_file(struct i2c_client *client, st_fw_head* fw_head, 
 extern u8 gup_get_ic_fw_msg(struct i2c_client *client);
 
 #if GTP_SLIDE_WAKEUP
+/* Gesture identificiation hex */
+#define GOODIX_RIGHT_SLIDE	0xAA
+#define GOODIX_LEFT_SLIDE	0xBB
+#define GOODIX_DOUBLE_TAP	0xC0
+#define GOODIX_UP_SLIDE	0xBA
+#define GOODIX_DOWN_SLIDE	0xAB
+#define GOODIX_C_SLIDE		0x63
+#define GOODIX_E_SLIDE		0x65
+#define GOODIX_M_SLIDE		0x6D
+#define GOODIX_O_SLIDE		0x6F
+#define GOODIX_W_SLIDE		0x77
+
+/* Gesture keycodes */
+#define KEY_GESTURE_SLIDE_UP		249
+#define KEY_GESTURE_SLIDE_DOWN		250
+#define KEY_GESTURE_SLIDE_LEFT		251
+#define KEY_GESTURE_SLIDE_RIGHT	252
+#define KEY_GESTURE_E			253
+#define KEY_GESTURE_O			254
+#define KEY_GESTURE_W			255
+#define KEY_GESTURE_C			256
+#define KEY_GESTURE_M			257
+#define GESTURE_UNKNOWN		258
+
 typedef enum
 {
     DOZE_DISABLED = 0,
@@ -183,14 +207,20 @@ enum support_gesture_e {
 	TW_SUPPORT_M_SLIDE_WAKEUP = 0x100,
 	TW_SUPPORT_DOUBLE_CLICK_WAKEUP = 0x200,
 
-	TW_SUPPORT_GESTURE_IN_ALL = (TW_SUPPORT_UP_SLIDE_WAKEUP | TW_SUPPORT_DOWN_SLIDE_WAKEUP |
-								TW_SUPPORT_LEFT_SLIDE_WAKEUP | TW_SUPPORT_RIGHT_SLIDE_WAKEUP | TW_SUPPORT_E_SLIDE_WAKEUP |
-								TW_SUPPORT_O_SLIDE_WAKEUP |TW_SUPPORT_W_SLIDE_WAKEUP |TW_SUPPORT_C_SLIDE_WAKEUP |
-								TW_SUPPORT_M_SLIDE_WAKEUP | TW_SUPPORT_DOUBLE_CLICK_WAKEUP)
+	TW_SUPPORT_GESTURE_IN_ALL =
+		   (TW_SUPPORT_UP_SLIDE_WAKEUP | TW_SUPPORT_DOWN_SLIDE_WAKEUP |
+		   TW_SUPPORT_LEFT_SLIDE_WAKEUP | TW_SUPPORT_RIGHT_SLIDE_WAKEUP |
+		   TW_SUPPORT_E_SLIDE_WAKEUP | TW_SUPPORT_O_SLIDE_WAKEUP |
+		   TW_SUPPORT_W_SLIDE_WAKEUP |TW_SUPPORT_C_SLIDE_WAKEUP |
+		   TW_SUPPORT_M_SLIDE_WAKEUP | TW_SUPPORT_DOUBLE_CLICK_WAKEUP)
+
 };
 
 u32 support_gesture = TW_SUPPORT_DOUBLE_CLICK_WAKEUP;
 char wakeup_slide[32];
+atomic_t gt_camera_enable;
+atomic_t gt_music_enable;
+atomic_t gt_flashlight_enable;
 
 #endif
 
@@ -595,6 +625,18 @@ static void goodix_ts_work_func(struct work_struct *work)
 #endif
 
 #if GTP_SLIDE_WAKEUP
+	unsigned int gesture_key = GESTURE_UNKNOWN;
+	u8 doze_buf[3] = {0x81, 0x4B};
+#endif
+
+	GTP_DEBUG_FUNC();
+
+	ts = container_of(work, struct goodix_ts_data, work);
+	if (ts->enter_update)
+		return;
+
+
+#if GTP_SLIDE_WAKEUP
 
 	/* Add mutex_lock for awake gesture to
 	   prevent this mode from being occupied
@@ -606,88 +648,80 @@ static void goodix_ts_work_func(struct work_struct *work)
 	if (doze_status == DOZE_ENABLED) {
 		ret = gtp_i2c_read(i2c_connect_client, doze_buf, 3);
 		GTP_DEBUG("0x814B = 0x%02X", doze_buf[2]);
-		envp = none_wakeup;	/* For testing, added by yewenliang */
 
-		if (ret > 0) {
-			if (doze_buf[2] == 0xAA &&
-				support_gesture & TW_SUPPORT_RIGHT_SLIDE_WAKEUP) {
-				doze_status = DOZE_WAKEUP;
-				GTP_INFO("Slide(0xAA) To Light up the screen!");
-				sprintf(wakeup_slide,"right");
-				envp = right_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0xBB &&
-				support_gesture & TW_SUPPORT_LEFT_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0xBB) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"left");
-				envp = left_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0xC0 &&
-				support_gesture & TW_SUPPORT_DOUBLE_CLICK_WAKEUP) {
-				GTP_INFO("double click to light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"double_click");
-				envp = doubleClick_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0xBA &&
-				support_gesture & TW_SUPPORT_UP_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0xBA) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"up");
-				envp = up_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0xAB &&
-				support_gesture & TW_SUPPORT_DOWN_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0xAB) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"down");
-				envp = down_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0x63 &&
-				support_gesture & TW_SUPPORT_C_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0x63) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"c");
-				envp = c_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0x65 &&
-				support_gesture & TW_SUPPORT_E_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0x65) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"e");
-				envp = e_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0x6D &&
-				support_gesture & TW_SUPPORT_M_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0x6D) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"m");
-				envp = m_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0x6F &&
-				support_gesture & TW_SUPPORT_O_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0x6F) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"o");
-				envp = o_wakeup;	/* For testing, added by yewenliang */
-			} else if (doze_buf[2] == 0x77 &&
-				support_gesture & TW_SUPPORT_W_SLIDE_WAKEUP) {
-				GTP_INFO("Slide(0x77) To Light up the screen!");
-				doze_status = DOZE_WAKEUP;
-				sprintf(wakeup_slide,"w");
-				envp = w_wakeup;	/* For testing, added by yewenliang */
-			} else {
-				/* Clear 0x814B, added by yewenliang */
-				doze_buf[2] = 0x00;
-				gtp_i2c_write(i2c_connect_client, doze_buf, 3);
-				gtp_enter_doze(ts);
-			}
+		if (ret <= 0)
+			goto i2c_fail;
+
+		switch (doze_buf[2]) {
+		case GOODIX_RIGHT_SLIDE:
+			sprintf(wakeup_slide, "right");
+			if (atomic_read(&gt_music_enable))
+				gesture_key = KEY_GESTURE_SLIDE_RIGHT;
+			break;
+		case GOODIX_LEFT_SLIDE:
+			sprintf(wakeup_slide, "left");
+			if (atomic_read(&gt_music_enable))
+				gesture_key = KEY_GESTURE_SLIDE_LEFT;
+			break;
+		case GOODIX_DOUBLE_TAP:
+			sprintf(wakeup_slide, "double_tap");
+			if (support_gesture & TW_SUPPORT_DOUBLE_CLICK_WAKEUP)
+				gesture_key = KEY_WAKEUP;
+			break;
+		case GOODIX_UP_SLIDE:
+			sprintf(wakeup_slide, "up");
+			gesture_key = KEY_GESTURE_SLIDE_UP;
+			break;
+		case GOODIX_DOWN_SLIDE:
+			sprintf(wakeup_slide, "down");
+			if (atomic_read(&gt_music_enable))
+				gesture_key = KEY_GESTURE_SLIDE_DOWN;
+			break;
+		case GOODIX_C_SLIDE:
+			sprintf(wakeup_slide, "C");
+			if (atomic_read(&gt_camera_enable))
+				gesture_key = KEY_GESTURE_C;
+			break;
+		case GOODIX_E_SLIDE:
+			sprintf(wakeup_slide, "E");
+			gesture_key = KEY_GESTURE_E;
+			break;
+		case GOODIX_M_SLIDE:
+			sprintf(wakeup_slide, "M");
+			gesture_key = KEY_GESTURE_M;
+			break;
+		case GOODIX_O_SLIDE:
+			sprintf(wakeup_slide, "O");
+			if (atomic_read(&gt_flashlight_enable))
+				gesture_key = KEY_GESTURE_O;
+			break;
+		case GOODIX_W_SLIDE:
+			sprintf(wakeup_slide, "W");
+			gesture_key = KEY_GESTURE_W;
+			break;
+		default:
+			/* Clear 0x814B, added by yewenliang */
+			doze_buf[2] = 0x00;
+			gtp_i2c_write(i2c_connect_client, doze_buf, 3);
+			gtp_enter_doze(ts);
+			gesture_key = GESTURE_UNKNOWN;
+			break;
 		}
 
-		if (doze_status == DOZE_WAKEUP) {
-			 input_report_key(ts->input_dev, KEY_WAKEUP, 1);
-			 input_report_key(ts->input_dev, KEY_WAKEUP, 0);
-			 input_sync(ts->input_dev);
+		if (gesture_key != GESTURE_UNKNOWN) {
+			doze_status = DOZE_WAKEUP;
 
-			 /* Clear 0x814B */
-			 doze_buf[2] = 0x00;
-			 gtp_i2c_write(i2c_connect_client, doze_buf, 3);
-			 gtp_enter_doze(ts);
+			input_report_key(ts->input_dev, gesture_key, 1);
+			input_report_key(ts->input_dev, gesture_key, 0);
+			input_sync(ts->input_dev);
+
+			/* Clear 0x814B */
+			doze_buf[2] = 0x00;
+			gtp_i2c_write(i2c_connect_client, doze_buf, 3);
+			gtp_enter_doze(ts);
 		}
 
+i2c_fail:
 		if (ts->use_irq)
 			gtp_irq_enable(ts);
 
@@ -1560,8 +1594,23 @@ static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
 
 #if GTP_SLIDE_WAKEUP
 
+	atomic_set(&gt_camera_enable, 1);
+	atomic_set(&gt_flashlight_enable, 1);
+	atomic_set(&gt_music_enable, 1);
+
 	set_bit(EV_KEY, ts->input_dev->evbit);
 	set_bit(KEY_WAKEUP, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_SLIDE_UP, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_SLIDE_DOWN, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_SLIDE_LEFT, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_SLIDE_RIGHT, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_E, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_O, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_W, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_C, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_M, ts->input_dev->keybit);
+#endif 
+
 
 #endif 
 #if GTP_CHANGE_X2Y
@@ -2926,16 +2975,108 @@ static ssize_t keypad_enable_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(gesture_support, S_IRUGO|S_IWUSR, gesture_support_show, NULL);
-static DEVICE_ATTR(send_cfg_ver,S_IRUGO|S_IWUSR, gt968_send_cfg_ver_show, gt968_send_cfg_ver_store);
 
-static DEVICE_ATTR(glove_switch, S_IRUGO|S_IWUSR, glove_show, glove_store);
+#if GTP_SLIDE_WAKEUP
+static ssize_t music_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", atomic_read(&gt_music_enable));
+}
+
+static ssize_t music_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long val;
+	bool enable;
+
+	if (strict_strtoul(buf, 16, &val))
+		return -EINVAL;
+
+	enable = val == 0 ? 0 : 1;
+	atomic_set(&gt_music_enable, enable);
+
+	return count;
+}
+
+static ssize_t camera_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", atomic_read(&gt_camera_enable));
+}
+
+static ssize_t camera_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long val;
+	bool enable;
+
+	if (strict_strtoul(buf, 16, &val))
+		return -EINVAL;
+
+	enable = val == 0 ? 0 : 1;
+	atomic_set(&gt_camera_enable, enable);
+
+	return count;
+}
+
+static ssize_t flashlight_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", atomic_read(&gt_flashlight_enable));
+}
+
+static ssize_t flashlight_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long val;
+	bool enable;
+
+	if (strict_strtoul(buf, 16, &val))
+		return -EINVAL;
+
+	enable = val == 0 ? 0 : 1;
+	atomic_set(&gt_flashlight_enable, enable);
+
+	return count;
+}
+#endif
+
+static DEVICE_ATTR(gesture_support,
+		S_IRUGO | S_IWUSR,
+		gesture_support_show,
+		NULL);
+static DEVICE_ATTR(send_cfg_ver,
+		S_IRUGO | S_IWUSR,
+		gt968_send_cfg_ver_show,
+		gt968_send_cfg_ver_store);
+static DEVICE_ATTR(glove_switch,
+		S_IRUGO | S_IWUSR,
+		glove_show,
+		glove_store);
 
 #ifdef CONFIG_TOUCHSCREEN_GT9XX_YL_COVER_WINDOW_SIZE
 static DEVICE_ATTR(windows_switch, S_IRUGO|S_IWUSR, windows_show, windows_store);
 #endif
 
-static DEVICE_ATTR(keypad_enable, S_IRUGO|S_IWUSR, keypad_enable_show, keypad_enable_store);
+static DEVICE_ATTR(keypad_enable,
+		S_IRUGO | S_IWUSR,
+		keypad_enable_show,
+		keypad_enable_store);
+#if GTP_SLIDE_WAKEUP
+static DEVICE_ATTR(music_enable,
+		S_IRUGO | S_IWUSR,
+		music_enable_show,
+		music_enable_store);
+static DEVICE_ATTR(camera_enable,
+		S_IRUGO | S_IWUSR,
+		camera_enable_show,
+		camera_enable_store);
+static DEVICE_ATTR(flashlight_enable,
+		S_IRUGO | S_IWUSR,
+		flashlight_enable_show,
+		flashlight_enable_store);
+#endif
+
 
 static struct attribute *goodix_attributes[] = {
 	&dev_attr_glove_switch.attr,
@@ -2945,6 +3086,11 @@ static struct attribute *goodix_attributes[] = {
 	&dev_attr_send_cfg_ver.attr,
 	&dev_attr_gesture_support.attr,/////add mxg
 	&dev_attr_keypad_enable.attr,
+#if GTP_SLIDE_WAKEUP
+	&dev_attr_music_enable.attr,
+	&dev_attr_camera_enable.attr,
+	&dev_attr_flashlight_enable.attr,
+#endif
 	NULL
 };
 
