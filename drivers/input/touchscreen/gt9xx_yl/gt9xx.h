@@ -45,7 +45,9 @@ struct goodix_ts_data {
     struct input_dev  *input_dev;
     struct hrtimer timer;
     struct work_struct  work;
-#ifdef CONFIG_FB
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+	struct early_suspend early_suspend;
+#elif defined(CONFIG_FB)
 	struct notifier_block fb_notif;
 #endif
     s32 irq_is_disable;
