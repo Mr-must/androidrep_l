@@ -1582,6 +1582,7 @@ static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
 #else
 //for Android4.0, use MT-A protocol
    ts->input_dev->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
+#endif
 
 #if GTP_HAVE_TOUCH_KEY
 	atomic_set(&gt_keypad_enable, 1);
